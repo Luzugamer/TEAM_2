@@ -1,0 +1,20 @@
+{
+  "name": "event-platform-team-2",
+  "version": "1.0.0",
+  "private": true,
+  "packageManager": "pnpm@11.20.0",
+  "description": "Team 2 - Event Configuration Service (Events, Schedule, Forms, Publishing)",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "start:api": "pnpm --filter @team-2/configuration-api start:dev",
+    "start:worker": "pnpm --filter @team-2/configuration-worker start",
+    "build:api": "pnpm --filter @team-2/configuration-api build",
+    "test:api": "pnpm --filter @team-2/configuration-api test"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}
+

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "configuration.event.release_published.v1",
+  "type": "object",
+  "required": ["message_id", "domain_event_id", "topic", "schema_version", "producer", "organization_id", "business_event_id", "occurred_at", "published_at", "actor", "aggregate", "partition_key", "data"],
+  "properties": {
+    "message_id": { "type": "string", "format": "uuid" },
+    "domain_event_id": { "type": "string", "format": "uuid" },
+    "topic": { "const": "configuration.event.release_published.v1" },
+    "schema_version": { "const": 1 },
+    "producer": { "const": "configuration" },
+    "organization_id": { "type": "string", "format": "uuid" },
+    "business_event_id": { "type": "string", "format": "uuid" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "published_at": { "type": "string", "format": "date-time" },
+    "actor": { "type": "object", "required": ["type", "id"], "properties": { "type": { "const": "user" }, "id": { "type": "string" } } },
+    "traceparent": { "type": ["string", "null"] },
+    "correlation_id": { "type": "string" },
+    "causation_id": { "type": ["string", "null"] },
+    "aggregate": { "type": "object", "required": ["type", "id", "version"], "properties": { "type": { "const": "release" }, "id": { "type": "string", "format": "uuid" }, "version": { "type": "integer", "minimum": 1 } } },
+    "partition_key": { "type": "string" },
+    "data": { "type": "object", "required": ["publication_id", "release_version", "manifest_ref", "manifest_hash", "effective_at"], "properties": {
+      "publication_id": { "type": "string", "format": "uuid" },
+      "release_version": { "type": "integer", "minimum": 1 },
+      "manifest_ref": { "type": "string" },
+      "manifest_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+      "effective_at": { "type": "string", "format": "date-time" }
+    } }
+  }
+}

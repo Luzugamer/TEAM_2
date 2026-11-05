@@ -1,0 +1,13 @@
+{
+  "name": "@team-2/configuration-worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Tenant-scoped transactional outbox relay with local broker simulator",
+  "scripts": {
+    "start": "node src/main.mjs"
+  },
+  "dependencies": {
+    "pg": "^8.11.5"
+  }
+}

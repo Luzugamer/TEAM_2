@@ -1,0 +1,85 @@
+name: event-configuration-local
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-event_configuration}
+      POSTGRES_USER: ${POSTGRES_USER:-configuration_migrator}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en .env}
+    ports:
+      - "127.0.0.1:${DB_PORT:-5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    command: ["node", "scripts/migrate.mjs"]
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-event_configuration}
+      POSTGRES_USER: ${POSTGRES_USER:-configuration_migrator}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en .env}
+      APP_DB_USER: ${APP_DB_USER:-configuration_app}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?Define APP_DB_PASSWORD en .env}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-event_configuration}
+      POSTGRES_USER: ${APP_DB_USER:-configuration_app}
+      POSTGRES_PASSWORD: ${APP_DB_PASSWORD:?Define APP_DB_PASSWORD en .env}
+      NODE_ENV: development
+      AUTH_MODE: mock
+      PORT: "3000"
+    ports:
+      - "127.0.0.1:${API_PORT:-3000}:3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    command: ["node", "apps/configuration-worker/src/main.mjs"]
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-event_configuration}
+      POSTGRES_USER: ${APP_DB_USER:-configuration_app}
+      POSTGRES_PASSWORD: ${APP_DB_PASSWORD:?Define APP_DB_PASSWORD en .env}
+      WORKER_TENANT_IDS: ${WORKER_TENANT_IDS:-0194eb00-0000-7000-8000-000000000001,0194eb00-0000-7000-8000-000000000002}
+      WORKER_POLL_INTERVAL_MS: ${WORKER_POLL_INTERVAL_MS:-1000}
+      WORKER_BATCH_SIZE: ${WORKER_BATCH_SIZE:-10}
+      WORKER_LEASE_SECONDS: ${WORKER_LEASE_SECONDS:-60}
+      WORKER_MAX_BACKOFF_SECONDS: ${WORKER_MAX_BACKOFF_SECONDS:-300}
+      SIMULATOR_FAIL_FIRST_N: ${SIMULATOR_FAIL_FIRST_N:-0}
+      SIMULATOR_FAIL_EVERY_N: ${SIMULATOR_FAIL_EVERY_N:-0}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

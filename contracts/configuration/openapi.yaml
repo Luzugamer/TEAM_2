@@ -1,0 +1,1439 @@
+openapi: 3.1.0
+info:
+  title: Event Configuration API - Events & Publishing Module
+  description: API for managing event lifecycles, revisions, role assignments, and publishing manifests (Team 2 - Integrante A). Responses include X-Request-Id. BearerAuth is the integration contract; DevActor is local development only.
+  version: 1.0.0
+servers:
+  - url: /configuration/v1
+    description: Base path for Configuration API v1
+
+paths:
+  /events:
+    post:
+      summary: Create a new event draft
+      operationId: createEvent
+      security:
+        - BearerAuth: []
+        - DevActor: []
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema:
+            type: string
+          description: Unique command idempotency token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventCreate"
+      responses:
+        "201":
+          description: Event successfully created in draft state.
+          headers:
+            ETag:
+              schema:
+                type: string
+              description: Entity tag representing current revision number (e.g. "1").
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventResponse"
+        "400":
+          $ref: "#/components/responses/ProblemBadRequest"
+        "401":
+          $ref: "#/components/responses/ProblemUnauthorized"
+        "403":
+          $ref: "#/components/responses/ProblemForbidden"
+        "409":
+          $ref: "#/components/responses/ProblemConflict"
+        "422":
+          $ref: "#/components/responses/ProblemUnprocessable"
+
+    get:
+      summary: List events for the authenticated tenant with cursor pagination
+      operationId: listEvents
+      security:
+        - BearerAuth: []
+        - DevActor: []
+      parameters:
+        - in: query
+          name: site_id
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: kind
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: status
+          required: false
+          schema:
+            type: string
+            enum: [draft, published, closed, cancelled, archived]
+        - in: query
+          name: from_date
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: to_date
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+        - in: query
+          name: cursor
+          required: false
+          schema:
+            type: string
+          description: Opaque cursor for deterministic pagination.
+      responses:
+        "200":
+          description: List of events matching filters within tenant isolation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventListResponse"
+        "401":
+          $ref: "#/components/responses/ProblemUnauthorized"
+        "403":
+          $ref: "#/components/responses/ProblemForbidden"
+
+  /events/{id}:
+    get:
+      summary: Get event details by ID
+      operationId: getEventById
+      security:
+        - BearerAuth: []
+        - DevActor: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Event found.
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventResponse"
+        "404":
+          $ref: "#/components/responses/ProblemNotFound"
+
+    patch:
+      summary: Edit event metadata and rules with optimistic concurrency control
+      operationId: updateEvent
+      security:
+        - BearerAuth: []
+        - DevActor: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: header
+          name: If-Match
+          required: true
+          schema:
+            type: string
+          description: Current revision ETag (e.g. "1") required for optimistic concurrency control.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventUpdate"
+      responses:
+        "200":
+          description: Event successfully updated with incremented revision number.
+          headers:
+            ETag:
+              schema:
+                type: string
+              description: New revision number ETag (e.g. "2").
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventResponse"
+        "400":
+          $ref: "#/components/responses/ProblemBadRequest"
+        "401":
+          $ref: "#/components/responses/ProblemUnauthorized"
+        "403":
+          $ref: "#/components/responses/ProblemForbidden"
+        "404":
+          $ref: "#/components/responses/ProblemNotFound"
+        "409":
+          $ref: "#/components/responses/ProblemConflict"
+        "412":
+          $ref: "#/components/responses/ProblemPreconditionFailed"
+        "422":
+          $ref: "#/components/responses/ProblemUnprocessable"
+        "428":
+          $ref: "#/components/responses/ProblemPreconditionRequired"
+
+  /events/{id}/duplications:
+    post:
+      summary: Duplicate event configuration into a new draft
+      operationId: duplicateEvent
+      security:
+        - BearerAuth: []
+        - DevActor: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Identifier of the source event to duplicate.
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema:
+            type: string
+          description: Unique command idempotency token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventDuplicate"
+      responses:
+        "201":
+          description: Event successfully duplicated into a new draft (revision 1).
+          headers:
+            ETag:
+              schema:
+                type: string
+              description: Initial revision ETag ("1").
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventResponse"
+        "400":
+          $ref: "#/components/responses/ProblemBadRequest"
+        "401":
+          $ref: "#/components/responses/ProblemUnauthorized"
+        "403":
+          $ref: "#/components/responses/ProblemForbidden"
+        "404":
+          $ref: "#/components/responses/ProblemNotFound"
+        "409":
+          $ref: "#/components/responses/ProblemConflict"
+        "422":
+          $ref: "#/components/responses/ProblemUnprocessable"
+
+  /events/{id}/closures:
+    post:
+      summary: Close registrations for a published event
+      operationId: closeEvent
+      security:
+        - BearerAuth: []
+        - DevActor: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: header
+          name: If-Match
+          required: true
+          schema:
+            type: string
+          description: Expected revision number ETag.
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema:
+            type: string
+          description: Unique command idempotency token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason, effective_at]
+              properties:
+                reason:
+                  type: string
+                  maxLength: 500
+                effective_at:
+                  type: string
+                  format: date-time
+      responses:
+        "200":
+          description: Event registrations successfully closed.
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventResponse"
+        "400":
+          $ref: "#/components/responses/ProblemBadRequest"
+        "401":
+          $ref: "#/components/responses/ProblemUnauthorized"
+        "403":
+          $ref: "#/components/responses/ProblemForbidden"
+        "404":
+          $ref: "#/components/responses/ProblemNotFound"
+        "409":
+          $ref: "#/components/responses/ProblemConflict"
+        "412":
+          $ref: "#/components/responses/ProblemPreconditionFailed"
+        "422":
+          $ref: "#/components/responses/ProblemUnprocessable"
+        "428":
+          $ref: "#/components/responses/ProblemPreconditionRequired"
+
+  /events/{id}/cancellations:
+    post:
+      summary: Cancel an event with reason and emit domain cancellation event
+      operationId: cancelEvent
+      security:
+        - BearerAuth: []
+        - DevActor: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: header
+          name: If-Match
+          required: true
+          schema:
+            type: string
+          description: Expected revision number ETag.
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema:
+            type: string
+          description: Unique command idempotency token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - reason
+                - effective_at
+              properties:
+                reason:
+                  type: string
+                  maxLength: 500
+                  example: "Sede inaccesible por fuerza mayor."
+                effective_at:
+                  type: string
+                  format: date-time
+                  example: "2026-11-20T14:00:00Z"
+      responses:
+        "200":
+          description: Event successfully cancelled and domain cancellation queued in outbox.
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventResponse"
+        "400":
+          $ref: "#/components/responses/ProblemBadRequest"
+        "401":
+          $ref: "#/components/responses/ProblemUnauthorized"
+        "403":
+          $ref: "#/components/responses/ProblemForbidden"
+        "404":
+          $ref: "#/components/responses/ProblemNotFound"
+        "409":
+          $ref: "#/components/responses/ProblemConflict"
+        "412":
+          $ref: "#/components/responses/ProblemPreconditionFailed"
+        "422":
+          $ref: "#/components/responses/ProblemUnprocessable"
+        "428":
+          $ref: "#/components/responses/ProblemPreconditionRequired"
+
+  /events/{id}/archives:
+    post:
+      summary: Archive a terminal event (closed or cancelled)
+      description: Requires events:write. The event must already be closed or cancelled.
+      operationId: archiveEvent
+      security:
+        - BearerAuth: []
+        - DevActor: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: header
+          name: If-Match
+          required: true
+          schema:
+            type: string
+          description: Expected revision number ETag.
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema:
+            type: string
+          description: Unique command idempotency token.
+      responses:
+        "200":
+          description: Event successfully archived.
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventResponse"
+        "400":
+          $ref: "#/components/responses/ProblemBadRequest"
+        "401":
+          $ref: "#/components/responses/ProblemUnauthorized"
+        "403":
+          $ref: "#/components/responses/ProblemForbidden"
+        "404":
+          $ref: "#/components/responses/ProblemNotFound"
+        "409":
+          $ref: "#/components/responses/ProblemConflict"
+        "412":
+          $ref: "#/components/responses/ProblemPreconditionFailed"
+        "422":
+          $ref: "#/components/responses/ProblemUnprocessable"
+        "428":
+          $ref: "#/components/responses/ProblemPreconditionRequired"
+
+  /events/{id}/assignments:
+    get:
+      summary: List all role assignments for an event
+      operationId: listEventAssignments
+      security:
+        - BearerAuth: []
+        - DevActor: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: List of assignments for this event.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AssignmentResponse"
+        "401":
+          $ref: "#/components/responses/ProblemUnauthorized"
+        "403":
+          $ref: "#/components/responses/ProblemForbidden"
+        "404":
+          $ref: "#/components/responses/ProblemNotFound"
+
+    post:
+      summary: Assign a responsible user to an event with role and scopes (EC-006)
+      operationId: createEventAssignment
+      security:
+        - BearerAuth: []
+        - DevActor: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema:
+            type: string
+          description: Unique command idempotency token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssignmentCreate"
+      responses:
+        "201":
+          description: Assignment successfully created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssignmentResponse"
+        "400":
+          $ref: "#/components/responses/ProblemBadRequest"
+        "401":
+          $ref: "#/components/responses/ProblemUnauthorized"
+        "403":
+          $ref: "#/components/responses/ProblemForbidden"
+        "404":
+          $ref: "#/components/responses/ProblemNotFound"
+        "409":
+          $ref: "#/components/responses/ProblemConflict"
+        "422":
+          $ref: "#/components/responses/ProblemUnprocessable"
+
+  /events/{id}/assignments/{assignment_id}:
+    delete:
+      summary: Revoke an event role assignment (EC-006)
+      operationId: revokeEventAssignment
+      security:
+        - BearerAuth: []
+        - DevActor: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: path
+          name: assignment_id
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema:
+            type: string
+          description: Unique command idempotency token.
+      responses:
+        "200":
+          description: Assignment successfully revoked (is_active set to false).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssignmentResponse"
+        "400":
+          $ref: "#/components/responses/ProblemBadRequest"
+        "401":
+          $ref: "#/components/responses/ProblemUnauthorized"
+        "403":
+          $ref: "#/components/responses/ProblemForbidden"
+        "404":
+          $ref: "#/components/responses/ProblemNotFound"
+        "409":
+          $ref: "#/components/responses/ProblemConflict"
+
+  /events/{id}/publication-validations:
+    post:
+      summary: Check publication readiness across domain artifacts (EC-030)
+      operationId: validateEventPublication
+      security:
+        - BearerAuth: []
+        - DevActor: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublicationValidationCreate"
+      responses:
+        "200":
+          description: Readiness report detailing blocking errors and non-blocking warnings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadinessReport"
+        "401":
+          $ref: "#/components/responses/ProblemUnauthorized"
+        "403":
+          $ref: "#/components/responses/ProblemForbidden"
+        "404":
+          $ref: "#/components/responses/ProblemNotFound"
+
+  /events/{id}/releases:
+    get:
+      summary: List all publication releases for an event
+      operationId: listEventReleases
+      security:
+        - BearerAuth: []
+        - DevActor: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: List of immutable publication releases.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ReleaseResponse"
+        "401":
+          $ref: "#/components/responses/ProblemUnauthorized"
+        "403":
+          $ref: "#/components/responses/ProblemForbidden"
+        "404":
+          $ref: "#/components/responses/ProblemNotFound"
+
+    post:
+      summary: Assemble and publish an atomic release manifest (EC-031)
+      operationId: createEventRelease
+      security:
+        - BearerAuth: []
+        - DevActor: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: header
+          name: If-Match
+          required: true
+          schema:
+            type: string
+          description: Expected current revision number ETag.
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema:
+            type: string
+          description: Unique command idempotency token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReleaseCreate"
+      responses:
+        "201":
+          description: Release successfully published atomically.
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReleaseResponse"
+        "400":
+          $ref: "#/components/responses/ProblemBadRequest"
+        "401":
+          $ref: "#/components/responses/ProblemUnauthorized"
+        "403":
+          $ref: "#/components/responses/ProblemForbidden"
+        "404":
+          $ref: "#/components/responses/ProblemNotFound"
+        "409":
+          $ref: "#/components/responses/ProblemConflict"
+        "412":
+          $ref: "#/components/responses/ProblemPreconditionFailed"
+        "422":
+          $ref: "#/components/responses/ProblemUnprocessable"
+        "428":
+          $ref: "#/components/responses/ProblemPreconditionRequired"
+
+  /events/{id}/releases/{release_id}:
+    get:
+      summary: Get publication release manifest and metadata by ID
+      operationId: getEventReleaseById
+      security:
+        - BearerAuth: []
+        - DevActor: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: path
+          name: release_id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Release details and full manifest.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReleaseResponse"
+        "401":
+          $ref: "#/components/responses/ProblemUnauthorized"
+        "403":
+          $ref: "#/components/responses/ProblemForbidden"
+        "404":
+          $ref: "#/components/responses/ProblemNotFound"
+
+  /events/{id}/releases/{release_id}/manifest:
+    get:
+      summary: Resolve an immutable release manifest reference
+      operationId: getReleaseManifest
+      security:
+        - BearerAuth: []
+        - DevActor: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: release_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Immutable release manifest.
+          content:
+            application/json:
+              schema: { type: object }
+        "404": { $ref: "#/components/responses/ProblemNotFound" }
+
+  /events/{id}/releases/{release_id}/manifest/artifacts/{kind}:
+    get:
+      summary: Resolve one immutable release artifact
+      operationId: getReleaseArtifact
+      security:
+        - BearerAuth: []
+        - DevActor: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: release_id
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: kind
+          required: true
+          schema: { type: string, enum: [event, schedule, forms] }
+      responses:
+        "200":
+          description: Artifact metadata and stored body.
+          content:
+            application/json:
+              schema: { type: object }
+        "404": { $ref: "#/components/responses/ProblemNotFound" }
+
+  /events/{id}/revisions:
+    get:
+      summary: List immutable event revisions
+      operationId: getEventRevisions
+      security:
+        - BearerAuth: []
+        - DevActor: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Event revision history.
+          content:
+            application/json:
+              schema: { type: array, items: { type: object } }
+        "404": { $ref: "#/components/responses/ProblemNotFound" }
+
+  /events/{id}/audit:
+    get:
+      summary: Get append-only audit trail for an event (EC-041)
+      operationId: getEventAuditTrail
+      security:
+        - BearerAuth: []
+        - DevActor: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: List of immutable audit trail records for this event.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AuditRecord"
+        "401":
+          $ref: "#/components/responses/ProblemUnauthorized"
+        "403":
+          $ref: "#/components/responses/ProblemForbidden"
+        "404":
+          $ref: "#/components/responses/ProblemNotFound"
+
+  /events/{id}/history:
+    get:
+      summary: Get complete change history and revisions for an event (EC-041)
+      operationId: getEventHistory
+      security:
+        - BearerAuth: []
+        - DevActor: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Complete chronological event revisions and audit records.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventHistoryResponse"
+        "401":
+          $ref: "#/components/responses/ProblemUnauthorized"
+        "403":
+          $ref: "#/components/responses/ProblemForbidden"
+        "404":
+          $ref: "#/components/responses/ProblemNotFound"
+
+components:
+  securitySchemes:
+    DevActor:
+      type: apiKey
+      in: header
+      name: x-dev-actor
+      description: Local development actor fixture. Never use outside the development profile.
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Verified token with the Configuration API audience. DevActor is accepted only by the local development profile.
+
+  schemas:
+    EventCreate:
+      type: object
+      required:
+        - site_id
+        - slug
+        - kind
+        - title
+        - timezone
+        - starts_at
+        - ends_at
+      properties:
+        site_id:
+          type: string
+          format: uuid
+          example: "0194eb45-d881-7f93-9c5f-3c81eef671d1"
+        slug:
+          type: string
+          pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          maxLength: 120
+          example: "cloud-summit-2026"
+        kind:
+          type: string
+          example: "conference"
+        title:
+          type: string
+          maxLength: 255
+          example: "Cloud Summit 2026"
+        description:
+          type: string
+          nullable: true
+          example: "Conferencia anual sobre arquitecturas distribuidas y cloud computing."
+        timezone:
+          type: string
+          example: "America/Lima"
+        starts_at:
+          type: string
+          format: date-time
+          example: "2026-11-20T14:00:00Z"
+        ends_at:
+          type: string
+          format: date-time
+          example: "2026-11-22T23:00:00Z"
+        policy:
+          type: object
+          default: {}
+          example:
+            registration:
+              requires_approval: false
+              capacity_limit_type: "unlimited"
+        metadata:
+          type: object
+          default: {}
+
+    EventUpdate:
+      type: object
+      properties:
+        slug:
+          type: string
+          pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          maxLength: 120
+          example: "cloud-summit-2026-updated"
+        kind:
+          type: string
+          example: "conference"
+        title:
+          type: string
+          maxLength: 255
+          example: "Cloud Summit 2026 (Updated)"
+        description:
+          type: string
+          nullable: true
+        timezone:
+          type: string
+          example: "America/Lima"
+        starts_at:
+          type: string
+          format: date-time
+        ends_at:
+          type: string
+          format: date-time
+        policy:
+          type: object
+        metadata:
+          type: object
+        change_summary:
+          type: string
+          maxLength: 500
+          example: "Actualización de títulos y políticas de registro."
+
+    EventDuplicate:
+      type: object
+      required:
+        - slug
+        - site_id
+        - starts_at
+        - ends_at
+      properties:
+        slug:
+          type: string
+          pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          maxLength: 120
+          example: "cloud-summit-2027"
+        starts_at:
+          type: string
+          format: date-time
+          example: "2027-11-20T14:00:00Z"
+        ends_at:
+          type: string
+          format: date-time
+          example: "2027-11-22T23:00:00Z"
+        site_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          maxLength: 255
+          example: "Cloud Summit 2027"
+        description:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+
+    EventResponse:
+      type: object
+      required:
+        - id
+        - organization_id
+        - site_id
+        - slug
+        - kind
+        - title
+        - timezone
+        - starts_at
+        - ends_at
+        - status
+        - revision_number
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        organization_id:
+          type: string
+          format: uuid
+        site_id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        kind:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        timezone:
+          type: string
+        starts_at:
+          type: string
+          format: date-time
+        ends_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [draft, published, closed, cancelled, archived]
+        current_revision_id:
+          type: string
+          format: uuid
+          nullable: true
+        revision_number:
+          type: integer
+          example: 1
+        policy:
+          type: object
+        metadata:
+          type: object
+        cancellation_reason:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    EventListResponse:
+      type: object
+      required:
+        - items
+        - page_info
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/EventResponse"
+        page_info:
+          type: object
+          required:
+            - has_next_page
+            - next_cursor
+          properties:
+            has_next_page:
+              type: boolean
+            next_cursor:
+              type: string
+              nullable: true
+
+    AssignmentCreate:
+      type: object
+      required:
+        - user_id
+        - role
+        - scopes
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          example: "0194eb00-0000-7000-9000-000000000002"
+        role:
+          type: string
+          maxLength: 50
+          example: "speaker-coordinator"
+        scopes:
+          type: array
+          items:
+            type: string
+          example: ["events:write"]
+        valid_from:
+          type: string
+          format: date-time
+          example: "2026-11-20T00:00:00Z"
+        valid_to:
+          type: string
+          format: date-time
+          example: "2026-11-23T00:00:00Z"
+        site_id:
+          type: string
+          format: uuid
+
+    AssignmentResponse:
+      type: object
+      required:
+        - id
+        - organization_id
+        - event_id
+        - user_id
+        - role
+        - scopes
+        - valid_from
+        - is_active
+        - created_by
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        organization_id:
+          type: string
+          format: uuid
+        event_id:
+          type: string
+          format: uuid
+          nullable: true
+        site_id:
+          type: string
+          format: uuid
+          nullable: true
+        user_id:
+          type: string
+          format: uuid
+        role:
+          type: string
+        scopes:
+          type: array
+          items:
+            type: string
+        valid_from:
+          type: string
+          format: date-time
+        valid_to:
+          type: string
+          format: date-time
+          nullable: true
+        is_active:
+          type: boolean
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ReadinessReport:
+      type: object
+      required:
+        - is_ready
+        - event_id
+        - organization_id
+        - expected_revision
+        - errors
+        - warnings
+        - checked_at
+      properties:
+        is_ready:
+          type: boolean
+        event_id:
+          type: string
+          format: uuid
+        organization_id:
+          type: string
+          format: uuid
+        expected_revision:
+          type: integer
+        errors:
+          type: array
+          items:
+            type: string
+        warnings:
+          type: array
+          items:
+            type: string
+        checked_at:
+          type: string
+          format: date-time
+
+    PublicationValidationCreate:
+      type: object
+      required:
+        - expected_event_revision
+      properties:
+        expected_event_revision:
+          type: integer
+          minimum: 1
+
+    ReleaseCreate:
+      type: object
+      required:
+        - expected_event_revision
+      properties:
+        expected_event_revision:
+          type: integer
+          minimum: 1
+        effective_at:
+          type: string
+          format: date-time
+          example: "2026-11-20T14:00:00Z"
+
+    ReleaseResponse:
+      type: object
+      required:
+        - id
+        - organization_id
+        - event_id
+        - release_version
+        - effective_at
+        - manifest_ref
+        - manifest_hash
+        - manifest
+        - event_revision_number
+        - status
+        - created_by
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        organization_id:
+          type: string
+          format: uuid
+        event_id:
+          type: string
+          format: uuid
+        release_version:
+          type: integer
+          minimum: 1
+        effective_at:
+          type: string
+          format: date-time
+        manifest_ref:
+          type: string
+        manifest_hash:
+          type: string
+          pattern: "^[a-f0-9]{64}$"
+        manifest:
+          type: object
+        event_revision_number:
+          type: integer
+        status:
+          type: string
+          enum: [published, superseded, cancelled]
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    AuditRecord:
+      type: object
+      required:
+        - id
+        - organization_id
+        - entity_type
+        - entity_id
+        - action
+        - actor_id
+        - actor_roles
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        organization_id:
+          type: string
+          format: uuid
+        entity_type:
+          type: string
+        entity_id:
+          type: string
+          format: uuid
+        action:
+          type: string
+        actor_id:
+          type: string
+        actor_roles:
+          type: array
+          items:
+            type: string
+        request_id:
+          type: string
+          nullable: true
+        idempotency_key:
+          type: string
+          nullable: true
+        revision_number:
+          type: integer
+          nullable: true
+        diff:
+          type: object
+          nullable: true
+        payload_hash:
+          type: string
+          pattern: "^[a-f0-9]{64}$"
+          nullable: true
+        client_ip:
+          type: string
+          nullable: true
+        user_agent:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    EventHistoryResponse:
+      type: object
+      required:
+        - event_id
+        - organization_id
+        - current_revision
+        - revisions
+        - audit_trail
+      properties:
+        event_id:
+          type: string
+          format: uuid
+        organization_id:
+          type: string
+          format: uuid
+        current_revision:
+          type: integer
+        revisions:
+          type: array
+          items:
+            type: object
+        audit_trail:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditRecord"
+
+    ProblemDetails:
+      type: object
+      required:
+        - type
+        - title
+        - status
+        - code
+        - detail
+        - request_id
+        - errors
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+        code:
+          type: string
+        request_id:
+          type: string
+          format: uuid
+        errors:
+          type: array
+          items:
+            type: object
+            required: [pointer, code, message]
+            properties:
+              pointer:
+                type: string
+              code:
+                type: string
+              message:
+                type: string
+
+  responses:
+    ProblemBadRequest:
+      description: Bad Request (Invalid parameters / Schema mismatch)
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+    ProblemUnauthorized:
+      description: Unauthorized (Token missing or invalid)
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+    ProblemForbidden:
+      description: Forbidden (Scope insufficient or tenant mismatch)
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+    ProblemNotFound:
+      description: Resource Not Found
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+    ProblemConflict:
+      description: Conflict (Idempotency conflict or concurrent modification)
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+    ProblemPreconditionFailed:
+      description: Precondition Failed (ETag / If-Match revision mismatch)
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+    ProblemUnprocessable:
+      description: Unprocessable Content (Domain rule validation failed)
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+    ProblemPreconditionRequired:
+      description: Precondition Required (If-Match header is required)
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
